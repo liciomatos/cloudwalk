@@ -1,0 +1,63 @@
+version: '3.1'
+
+services:
+  pg_master:
+    image: postgres:13
+    container_name: pg_master
+    environment:
+      POSTGRES_USER: masteruser
+      POSTGRES_PASSWORD: masterpassword
+      POSTGRES_DB: cloudwalkdb
+    volumes:
+      - pg_master_data:/var/lib/postgresql/data
+      - ./pg_master_init:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=4", "-c", "max_wal_senders=4"]
+
+  pg_replica:
+    image: postgres:13
+    container_name: pg_replica
+    environment:
+      POSTGRES_USER: replicauser
+      POSTGRES_PASSWORD: replicapassword
+      POSTGRES_DB: cloudwalkdb
+    volumes:
+      - pg_replica_data:/var/lib/postgresql/data
+      - ./pg_replica_init:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    command: ["postgres", "-c", "wal_level=logical"]
+    depends_on:
+      - pg_master
+
+  data_inserter:
+    image: python:3.8
+    container_name: data_inserter
+    volumes:
+      - ./insert_data.py:/usr/src/app/insert_data.py
+      - ./requirements.txt:/usr/src/app/requirements.txt
+    depends_on:
+      - pg_master
+    environment:
+      - WAIT_HOSTS=pg_master:5432
+    entrypoint: ["sh", "-c", "pip install -r /usr/src/app/requirements.txt && python /usr/src/app/insert_data.py"]
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - pg_master
+      - pg_replica
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  pg_master_data:
+  pg_replica_data:
+  pgadmin_data:
